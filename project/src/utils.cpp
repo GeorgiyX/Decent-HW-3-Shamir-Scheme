@@ -1,10 +1,8 @@
 #include <stdexcept>
 #include <iostream>
 #include <utility>
-#include <openssl/rand.h>
-#include <openssl/bn.h>
-#include <sstream>
 #include "utils.h"
+#include "shamir.h"
 
 namespace HW3 {
     const char *RECOVER_STR = "recover";
@@ -39,75 +37,6 @@ namespace HW3 {
         }
     }
 
-    std::vector<Shadow> splitSecret(const std::string &secret, size_t totalShadows, size_t minShadows) {
-        std::vector<int> parameters(minShadows - 1, 0);
-        std::vector<Shadow> shadows;
-        int rc = 0;
-
-        /* Generating parameters of a polynomial of degree "minShadows - 1" */
-        for (auto &parameter : parameters) {
-            rc = RAND_bytes(reinterpret_cast<unsigned char *>(&parameter), sizeof(parameter));
-            if (rc != 1) { throw std::runtime_error("RAND_bytes error"); }
-        }
-
-        /* Calculating parts of a shared secret */
-        for (size_t x = 1; x <= totalShadows; x++) {
-            shadows.emplace_back(x, valueOfPolynomial(x, parameters, secret));
-        }
-
-        return shadows;
-    }
-
-    std::string valueOfPolynomial(size_t x, const std::vector<int> &parameters, const std::string &constantTerm) {
-        BN_CTX *ctx = BN_CTX_new();  // todo: shared ptr - BN_CTX_free
-        if (!ctx) { throw std::runtime_error("error BN_CTX_new"); }
-
-        int rc = 0;
-        BIGNUM *result = nullptr;
-        rc = BN_hex2bn(&result, constantTerm.c_str());
-        if(rc == 0) { throw  std::runtime_error("error BN_hex2bn (constantTerm)"); }
-
-        BIGNUM *argument = nullptr;
-        rc = BN_dec2bn(&argument, std::to_string(x).c_str());
-        if(rc == 0) { throw  std::runtime_error("error BN_dec2bn (x)"); }
-
-
-        BIGNUM *pow = nullptr, *param = nullptr;
-        BIGNUM *powResult = BN_new();  /// todo: shared ptr
-        if (!powResult) { throw std::runtime_error("error BN_new"); }
-        BIGNUM *mulResult = BN_new();  /// todo: shared ptr
-        if (!mulResult) { throw std::runtime_error("error BN_new"); }
-
-        for (size_t i = 0; i < parameters.size(); ++i) {
-            /* simple do: result += parameters[i] * std::pow(x, i + 1) */
-            /* pow: */
-            rc = BN_dec2bn(&pow, std::to_string(i +  1).c_str()); // free..
-            if(rc == 0) { throw  std::runtime_error("error BN_dec2bn (i)"); }
-
-            rc = BN_exp(powResult, argument, pow, ctx);
-            if(rc == 0) { throw  std::runtime_error("error BN_exp"); }
-
-            /* mul: */
-            rc = BN_dec2bn(&param, std::to_string(parameters[i]).c_str());
-            if(rc == 0) { throw  std::runtime_error("error BN_dec2bn (parameters[i])"); }
-
-            rc = BN_mul(mulResult, param, powResult, ctx);
-            if(rc == 0) { throw  std::runtime_error("error BN_exp"); }
-
-            /* add: */
-            rc = BN_add(result, result, mulResult);
-            if(rc == 0) { throw  std::runtime_error("error BN_add"); }
-        }
-
-        char *resultCString = BN_bn2hex(result);
-        if (!resultCString) { throw std::runtime_error("error BN_bn2hex"); }
-        std::string resultString(resultCString);
-        OPENSSL_free(resultCString);
-
-        // todo: FIX MEM LEAKS!
-        return resultString; // todo: check "0x".
-    }
-
     void runInRecoverMode() {
         std::vector<Shadow> shadows;
         std::string shadowY;
@@ -119,15 +48,71 @@ namespace HW3 {
         std::cout << recoverSecret(shadows);
     }
 
-    std::string recoverSecret(const std::vector<Shadow> &shadows) {
-        shadows.size();
-        return std::string("kek");
+
+    BIGNUM *BIGRATIO::intPart() {
+        return nullptr;
     }
 
+    BIGRATIO::BIGRATIO() : numerator(BN_new()), denominator(BN_new()), isInit(false){
+        if (!numerator || !denominator) {throw std::runtime_error("error in ctor BIGRATIO"); }
+        int rc = BN_zero(numerator);
+        if (rc == 0) {throw std::runtime_error("error in ctor BIGRATIO"); }
+        rc= BN_zero(denominator);
+        if (rc == 0) {throw std::runtime_error("error in ctor BIGRATIO"); }
+    }
 
-    Shadow::Shadow(size_t x, std::string y) : _x(), _y(std::move(y)) {
-        std::stringstream iss;
-        iss << "0x" << std::hex << x;
-        _x = iss.str();
+    BIGRATIO::~BIGRATIO() {
+        BN_free(numerator);
+        BN_free(denominator);
+    }
+
+    BIGRATIO &BIGRATIO::operator+=(const BIGRATIO &rhs) {
+        isInit ? add(rhs) : assign(rhs);
+        return *this;
+    }
+
+    BIGRATIO BIGRATIO::operator*(const BIGNUM *rhs) const {
+        BIGRATIO bigratio;
+        BN_CTX_ptr ctx(BN_CTX_new(), BN_CTX_free);
+        if (!ctx.get()) { throw std::runtime_error("error BN_CTX_new"); }
+
+        int rc = BN_mul(bigratio.numerator, this->numerator, rhs, ctx.get());
+        if (rc == 0 ) { throw std::runtime_error("error BN_mul"); }
+
+        rc = BN_add(bigratio.denominator, bigratio.denominator, this->denominator);
+        if (rc == 0 ) { throw std::runtime_error("error BN_add"); }
+
+        return bigratio; // TODO: copy ptr then free => sigsegv
+    }
+
+    void BIGRATIO::assign(const BIGRATIO &rhs) {
+        int rc = BN_add(this->numerator, this->numerator ,rhs.numerator);
+        if (rc == 0 ) { throw std::runtime_error("error BN_add"); }
+        rc = BN_add(this->denominator, this->denominator ,rhs.denominator);
+        if (rc == 0 ) { throw std::runtime_error("error BN_add"); }
+        isInit = true;
+    }
+
+    void BIGRATIO::add(const BIGRATIO &rhs) {
+        BN_CTX_ptr ctx(BN_CTX_new(), BN_CTX_free);
+        if (!ctx.get()) { throw std::runtime_error("error BN_CTX_new"); }
+
+        BIGNUM_ptr mulLeft(BN_new(), BN_free);
+        if (!mulLeft.get()) { throw std::runtime_error("error BN_new"); }
+
+        BIGNUM_ptr mulRight(BN_new(), BN_free);
+        if (!mulLeft.get()) { throw std::runtime_error("error BN_new"); }
+
+        int rc = BN_mul(mulLeft.get(), this->numerator, rhs.denominator, ctx.get());
+        if (rc == 0) { throw std::runtime_error("error BN_mul"); }
+
+        rc = BN_mul(mulRight.get(), this->denominator, rhs.numerator, ctx.get());
+        if (rc == 0) { throw std::runtime_error("error BN_mul"); }
+
+        rc = BN_add(this->numerator, mulLeft.get(), mulRight.get());
+        if (rc == 0) { throw std::runtime_error("error BN_add"); }
+
+        rc = BN_mul(this->denominator, this->denominator, rhs.denominator, ctx.get());
+        if (rc == 0) { throw std::runtime_error("error BN_mul"); }
     }
 }  // namespace HW3
