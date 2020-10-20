@@ -104,12 +104,24 @@ namespace HW3 {
         std::string resultString(resultCString);
         OPENSSL_free(resultCString);
 
-        // todo: FIX MEM LEAKS!!!!
+        // todo: FIX MEM LEAKS!
         return resultString; // todo: check "0x".
     }
 
     void runInRecoverMode() {
+        std::vector<Shadow> shadows;
+        std::string shadowY;
+        size_t shadowX = 0;
+        while (std::cin >> shadowY) {
+            shadowX++;
+            shadows.emplace_back(shadowX, shadowY);
+        }
+        std::cout << recoverSecret(shadows);
+    }
 
+    std::string recoverSecret(const std::vector<Shadow> &shadows) {
+        shadows.size();
+        return std::string("kek");
     }
 
 

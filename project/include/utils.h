@@ -45,6 +45,13 @@ namespace HW3 {
      * @return result string in hex
      */
     std::string valueOfPolynomial(size_t x, const std::vector<int> &parameters, const std::string &constantTerm);
+    /**
+     * Restores the secret according to Shamir's scheme. Parameter
+     * verification is not required - the user enters a valid value
+     * @param shadows - minimum set of shadows required for restoration
+     * @return restored secret
+     */
+    std::string recoverSecret(const std::vector<Shadow> &shadows);
 
 }  // namespace hw3
 
