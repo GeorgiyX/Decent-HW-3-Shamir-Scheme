@@ -24,9 +24,9 @@ namespace HW3 {
     void runInRecoverMode();
 
     struct Shadow {
-        Shadow(size_t x, std::string y) : x(x), y(std::move(y)) {}
-        size_t x;       ///< @brief x = 1..100;
-        std::string y;  ///< @brief shadow (part of the secret)
+        Shadow(size_t x, std::string y);
+        std::string _x;  ///< @brief x = 1..100; In hex;
+        std::string _y;  ///< @brief shadow (part of the secret)
     };
     /**
      * Divides the secret "secret" according to the Shamir scheme into "totalShadows" parts
@@ -37,6 +37,13 @@ namespace HW3 {
      * @return shadow vector
      */
     std::vector<Shadow> splitSecret(const std::string &secret, size_t totalShadows, size_t minShadows);
+    /**
+     * Finds the value of the polynomial at "x" using high precision calculations.
+     * @param x - argument in dec
+     * @param parameters - vector of parameters (in dec) for a variable
+     * @param constantTerm - value in hex
+     * @return result string in hex
+     */
     std::string valueOfPolynomial(size_t x, const std::vector<int> &parameters, const std::string &constantTerm);
 
 }  // namespace hw3

@@ -8,8 +8,10 @@ int main(int argc, char **argv) {
         HW3::runInRecoverMode();
     } catch (std::runtime_error &error) {
         std::cout << error.what() << std::endl;
+        return 1;
     } catch (...) {
         std::cout << "unknown error" << std::endl;
+        return 1;
     }
     return 0;
 }
