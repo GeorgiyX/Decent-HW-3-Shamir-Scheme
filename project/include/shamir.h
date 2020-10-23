@@ -37,9 +37,9 @@ namespace HW3 {
      * Constant term of the base Lagrange polynomial
      * @param shadows
      * @param shadowNum
-     * @return
+     * @return constant term, represented by BIGRATIO
      */
-    /* todo: shared_ptr*/BIGRATIO getConstantTermPart(const std::vector<Shadow> &shadows, size_t shadowNum);
+    BIGRATIO getConstantTermPart(const std::vector<Shadow> &shadows, size_t shadowNum);
 
 
 

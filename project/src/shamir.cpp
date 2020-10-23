@@ -78,26 +78,25 @@ namespace HW3 {
     }
 
     std::string recoverSecret(const std::vector<Shadow> &shadows) {
-        BN_CTX_ptr ctx(BN_CTX_new(), BN_CTX_free);
-        if (!ctx.get()) { throw std::runtime_error("error BN_CTX_new"); }
+        std::shared_ptr<BN_CTX> ctx(BN_CTX_new(), BN_CTX_free);
+        if (!ctx) { throw std::runtime_error("error BN_CTX_new"); }
 
-        BIGNUM *shadowY = nullptr;
+        std::shared_ptr<BIGNUM> shadowY(BN_new(), BN_free);
+        if (!shadowY) { throw std::runtime_error("error BN_new"); }
+        auto shadowYPtr = shadowY.get();  // get() must not return nullptr
+
         BIGRATIO result;
         int rc = 0;
 
         for (const auto &shadow : shadows) {
-            rc = BN_dec2bn(&shadowY, shadow._y.c_str());
-            if (rc == 0) { throw std::runtime_error("error BN_dec2bn"); }
+            /* todo: test, may be problem with using shadowY, if shadowYPtr = null, and BN_hex2bn alloc */
+            rc = BN_hex2bn(&shadowYPtr, shadow._y.c_str());  // input in hex (as well as output).
+            if (rc == 0) { throw std::runtime_error("error BN_hex2bn"); }
 
             result += getConstantTermPart(shadows, shadow._x) * shadowY;
-            rc = BN_mul(shadowY, shadowY, getConstantTermPart(shadows, shadow._x), ctx.get());
-            if (rc == 0) { throw std::runtime_error("error BN_mul"); }
-
-            rc = BN_add(result, result, shadowY);
-            if (rc == 0) { throw std::runtime_error("error BN_add"); }
         }
 
-        char *resultCString = BN_bn2hex(result);
+        char *resultCString = BN_bn2hex(result.intPart().get());
         if (!resultCString) { throw std::runtime_error("error BN_bn2hex"); }
         std::string resultString(resultCString);
         OPENSSL_free(resultCString);
@@ -105,43 +104,29 @@ namespace HW3 {
         return resultString;
     }
 
-    BIGRATIO * getConstantTermPart(const std::vector<Shadow> &shadows, size_t shadowNum) {
-        int rc = 0;
-        BIGNUM *result = nullptr, *xI = nullptr, *xJ = nullptr,
-                *subResult = nullptr, *denominator = nullptr, *numerator = nullptr;
+    BIGRATIO getConstantTermPart(const std::vector<Shadow> &shadows, size_t shadowNum) {
+        static auto ctx  = bn::make_ctx();
+        auto xI          = bn::make_bignum();
+        auto xJ          = bn::make_bignum();
+        auto subResult   = bn::make_bignum();
+        auto denominator = bn::make_bignum();
+        auto numerator   = bn::make_bignum();
 
-        BN_CTX *ctx = BN_CTX_new();  // todo: shared ptr - BN_CTX_free
-        if (!ctx) { throw std::runtime_error("error BN_CTX_new"); }
-
-        rc = BN_dec2bn(&result, ONE_NUM);
-        if (rc == 0) { throw std::runtime_error("error BN_dec2bn"); }
-
-        rc = BN_dec2bn(&xI, std::to_string(shadowNum).c_str());
-        if (rc == 0) { throw std::runtime_error("error BN_dec2bn"); }
-
-        denominator = BN_new();
-        if (!denominator) { throw std::runtime_error("error BN_new"); }
-
-        numerator = BN_new();
-        if (!numerator) { throw std::runtime_error("error BN_new"); }
-
-        subResult = BN_new();
-        if (!numerator) { throw std::runtime_error("error BN_new"); }
+        bn::dec2bn(xI, std::to_string(shadowNum));
+        bn::one(numerator);
+        bn::one(denominator);
 
         for (const auto &shadow : shadows) {
             if (shadow._x == shadowNum) { continue; }
-            rc = BN_dec2bn(&xJ, std::to_string(shadow._x).c_str());
+            bn::dec2bn(xJ, std::to_string(shadow._x));
             /* numerator */
-            rc = BN_mul(numerator, numerator, xJ, ctx);
-            if (rc == 0) { throw std::runtime_error("error BN_dec2bn"); }
+            bn::mul(numerator, numerator, xJ, ctx);
             /* denominator */
-            rc = BN_sub(subResult, xI, xJ);
-            if (rc == 0) { throw std::runtime_error("error BN_sub"); }
-            rc = BN_mul(denominator, denominator, subResult, ctx);
-            if (rc == 0) { throw std::runtime_error("error BN_mul"); }
-
+            bn::sub(subResult, xI, xJ);
+            bn::mul(denominator, denominator, subResult, ctx);
         }
-        return result;
+
+        return BIGRATIO(std::move(numerator), std::move(denominator));
     }
 
 
