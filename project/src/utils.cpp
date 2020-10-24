@@ -1,6 +1,5 @@
 #include <stdexcept>
 #include <iostream>
-#include <utility>
 #include "utils.h"
 #include "shamir.h"
 
@@ -9,6 +8,7 @@ namespace HW3 {
     const char *SPLIT_STR = "split";
     const int SPLIT_LEFT_BORDER = 2;
     const int SPLIT_RIGHT_BORDER = 100;
+    const char *HEX_PREFIX = "0x";
 
     bool args2mode(int argc, char **argv) {
         if (argc <= 1 || !argv) { throw std::runtime_error("wrong arguments"); }
@@ -31,9 +31,9 @@ namespace HW3 {
         if (!(SPLIT_LEFT_BORDER < minShadow && minShadow <= totalShadow && totalShadow < SPLIT_RIGHT_BORDER)) {
             throw std::runtime_error("invalid number of shadows or the number of shadows required for recovery");
         }
-        auto shadows = splitSecret(secretString, totalShadow, minShadow);
-        for (const auto &shadow : shadows) {
-            std::cout << shadow._y << std::endl;
+        auto shadows = splitSecret(removeHexPrefix(secretString), totalShadow, minShadow);
+        for (auto &shadow : shadows) {
+            std::cout << shadow << std::endl;
         }
     }
 
@@ -45,14 +45,29 @@ namespace HW3 {
             shadowX++;
             shadows.emplace_back(shadowX, shadowY);
         }
-        std::cout << recoverSecret(shadows);
+        std::cout << appendHexPrefix(recoverSecret(shadows)) << std::endl;
     }
 
-    BIGRATIO::BIGRATIO() : numerator(BN_new(), BN_free), denominator(BN_new(), BN_free), isNull(true) {
+    std::string &removeHexPrefix(std::string &prefixString) {
+        static std::string prefix(HEX_PREFIX);
+        if (prefixString.compare(0, prefix.size(), prefix) != 0) {
+            return prefixString;
+        } else {
+            prefixString = prefixString.substr(prefix.size(), prefixString.size());
+            return prefixString;
+        }
+    }
+
+    std::string appendHexPrefix(const std::string &prefixString) {
+        return HEX_PREFIX + prefixString;
+    }
+
+    BIGRATIO::BIGRATIO() : numerator(BN_new(), BN_free), denominator(BN_new(), BN_free),
+                           isNull(true), _ctx(bn::make_ctx()) {
         if (!numerator || !denominator) {throw std::runtime_error("error in ctor BIGRATIO"); }
         int rc = BN_zero(numerator.get());
         if (rc == 0) {throw std::runtime_error("error in ctor BIGRATIO"); }
-        rc= BN_zero(denominator.get());
+        rc = BN_zero(denominator.get());
         if (rc == 0) {throw std::runtime_error("error in ctor BIGRATIO"); }
     }
 
@@ -61,76 +76,51 @@ namespace HW3 {
         return *this;
     }
 
-    BIGRATIO BIGRATIO::operator*(const std::shared_ptr<BIGNUM> &rhs) const {
+    BIGRATIO BIGRATIO::operator*(const std::shared_ptr<BIGNUM> &rhs) {
         BIGRATIO bigratio;
-        std::shared_ptr<BN_CTX> ctx(BN_CTX_new(), BN_CTX_free);
-        if (!ctx) { throw std::runtime_error("error BN_CTX_new"); }
 
-        int rc = BN_mul(bigratio.numerator.get(), this->numerator.get(), rhs.get(), ctx.get());
-        if (rc == 0 ) { throw std::runtime_error("error BN_mul"); }
-
-        rc = BN_add(bigratio.denominator.get(), bigratio.denominator.get(), this->denominator.get());
-        if (rc == 0 ) { throw std::runtime_error("error BN_add"); }
+        bn::mul(bigratio.numerator, this->numerator, rhs, _ctx);
+        bn::add(bigratio.denominator, bigratio.denominator, this->denominator);
 
         return bigratio;
     }
 
     void BIGRATIO::assign(const BIGRATIO &rhs) {
-        int rc = BN_add(this->numerator.get(), this->numerator.get() ,rhs.numerator.get());
-        if (rc == 0 ) { throw std::runtime_error("error BN_add"); }
-        rc = BN_add(this->denominator.get(), this->denominator.get(), rhs.denominator.get());
-        if (rc == 0 ) { throw std::runtime_error("error BN_add"); }
+        bn::add(this->numerator, this->numerator, rhs.numerator);
+        bn::add(this->denominator, this->denominator, rhs.denominator);
         isNull = false;
     }
 
     void BIGRATIO::add(const BIGRATIO &rhs) {
-        std::shared_ptr<BN_CTX> ctx(BN_CTX_new(), BN_CTX_free);
-        if (!ctx) { throw std::runtime_error("error BN_CTX_new"); }
+        auto mulLeft = bn::make_bignum();
+        auto mulRight = bn::make_bignum();
 
-        std::shared_ptr<BIGNUM> mulLeft(BN_new(), BN_free);
-        if (!mulLeft) { throw std::runtime_error("error BN_new"); }
-
-        std::shared_ptr<BIGNUM> mulRight(BN_new(), BN_free);
-        if (!mulLeft) { throw std::runtime_error("error BN_new"); }
-
-        int rc = BN_mul(mulLeft.get(), this->numerator.get(), rhs.denominator.get(), ctx.get());
-        if (rc == 0) { throw std::runtime_error("error BN_mul"); }
-
-        rc = BN_mul(mulRight.get(), this->denominator.get(), rhs.numerator.get(), ctx.get());
-        if (rc == 0) { throw std::runtime_error("error BN_mul"); }
-
-        rc = BN_add(this->numerator.get(), mulLeft.get(), mulRight.get());
-        if (rc == 0) { throw std::runtime_error("error BN_add"); }
-
-        rc = BN_mul(this->denominator.get(), this->denominator.get(), rhs.denominator.get(), ctx.get());
-        if (rc == 0) { throw std::runtime_error("error BN_mul"); }
+        bn::mul(mulLeft, this->numerator, rhs.denominator, _ctx);
+        bn::mul(mulRight, rhs.numerator, this->denominator, _ctx);
+        bn::add(this->numerator, mulLeft, mulRight);
+        bn::mul(this->denominator, this->denominator, rhs.denominator, _ctx);
     }
 
-    std::shared_ptr<BIGNUM> BIGRATIO::intPart() const {
-        std::shared_ptr<BN_CTX> ctx(BN_CTX_new(), BN_CTX_free);
-        if (!ctx) { throw std::runtime_error("error BN_CTX_new"); }
-
-        std::shared_ptr<BIGNUM> result(BN_new(), BN_free);
-        if (!result) { throw std::runtime_error("error BN_new"); }
-
-        int rc = BN_div(result.get(), nullptr, numerator.get(), denominator.get(), ctx.get());
-        if (rc == 0) { throw std::runtime_error("error BN_div"); }
-
+    std::shared_ptr<BIGNUM> BIGRATIO::intPart() {
+        auto result = bn::make_bignum();
+        bn::div(result, numerator, denominator, _ctx);
         return result;
     }
 
-    BIGRATIO::BIGRATIO(std::shared_ptr<BIGNUM> &&numerator, std::shared_ptr<BIGNUM> &&denominator) {
-
+    BIGRATIO::BIGRATIO(std::shared_ptr<BIGNUM> &&numerator, std::shared_ptr<BIGNUM> &&denominator) :
+    numerator(numerator), denominator(denominator), isNull(false /* let's trust that the parameters
+    * do not contain a null BIGNUM */), _ctx(bn::make_ctx()){
     }
 
-    void bn::mul(std::shared_ptr<BIGNUM> &r, std::shared_ptr<BIGNUM> &a, std::shared_ptr<BIGNUM> &b,
-                 std::shared_ptr<BN_CTX> &ctx) {
+    void bn::mul(std::shared_ptr<BIGNUM> &r, const std::shared_ptr<BIGNUM> &a,
+                 const std::shared_ptr<BIGNUM> &b, std::shared_ptr<BN_CTX> &ctx) {
         if (BN_mul(r.get(), a.get(), b.get(), ctx.get()) == 0) {
             throw std::runtime_error("error BN_mul");
         }
     }
 
-    void bn::sub(std::shared_ptr<BIGNUM> &r, std::shared_ptr<BIGNUM> &a, std::shared_ptr<BIGNUM> &b) {
+    void bn::sub(std::shared_ptr<BIGNUM> &r, const std::shared_ptr<BIGNUM> &a,
+                 const std::shared_ptr<BIGNUM> &b) {
         if (BN_sub(r.get(), a.get(), b.get()) == 0) {
             throw std::runtime_error("error BN_mul");
         }
@@ -164,9 +154,38 @@ namespace HW3 {
 
     void bn::hex2bn(std::shared_ptr<BIGNUM> &bn, const std::string &numString) {
         auto bnPtr = bn.get();
-        if(!bnPtr) { throw std::runtime_error("dec2bn: BIGNUM must be created"); }
-        if (BN_dec2bn(&bnPtr, numString.c_str()) == 0) {
-            throw std::runtime_error("dec2bn: some error, input value: " + numString);
+        if(!bnPtr) { throw std::runtime_error("hex2bn: BIGNUM must be created"); }
+        if (BN_hex2bn(&bnPtr, numString.c_str()) == 0) {
+            throw std::runtime_error("hex2bn: some error, input value: " + numString);
+        }
+    }
+
+    std::string bn::bn2hex(const std::shared_ptr<BIGNUM> &a) {
+        char *resultCString = BN_bn2hex(a.get());
+        if (!resultCString) { throw std::runtime_error("error BN_bn2hex"); }
+        std::string resultString(resultCString);
+        OPENSSL_free(resultCString);
+        return resultString;
+    }
+
+    void bn::div(std::shared_ptr<BIGNUM> &dv, const std::shared_ptr<BIGNUM> &a,
+                 const std::shared_ptr<BIGNUM> &d, std::shared_ptr<BN_CTX> &ctx) {
+        if (BN_div(dv.get(), nullptr, a.get(), d.get(), ctx.get()) == 0) {
+            throw std::runtime_error("error BN_div");
+        }
+    }
+
+    void bn::exp(std::shared_ptr<BIGNUM> &r, const std::shared_ptr<BIGNUM> &a,
+                 const std::shared_ptr<BIGNUM> &p, std::shared_ptr<BN_CTX> &ctx) {
+        if (BN_exp(r.get(), a.get(), p.get(), ctx.get()) == 0) {
+            throw std::runtime_error("error BN_exp");
+        }
+    }
+
+    void bn::add(std::shared_ptr<BIGNUM> &r, const std::shared_ptr<BIGNUM> &a,
+                 const std::shared_ptr<BIGNUM> &b) {
+        if (BN_add(r.get(), a.get(), b.get()) == 0) {
+            throw std::runtime_error("error BN_add");
         }
     }
 }  // namespace HW3

@@ -5,9 +5,20 @@
 
 namespace HW3 {
     struct Shadow {
+        /**
+         * Constructs a shadow using the argument "x" in decimal
+         * and "y" in hexadecimal. "y" - contains the prefix "0x"
+         */
         Shadow(size_t x, std::string y);
-        size_t _x;       ///< @brief x = 1..100
-        std::string _y;  ///< @brief shadow (part of the secret)
+        size_t x;       ///< @brief x = 1..100 (in dec)
+        std::string y;  ///< @brief shadow (part of the secret, in hex)
+        /**
+         * Prints "shadow.y" with the prefix "0x" in the stream out
+         * @param out std::cout
+         * @param shadow
+         * @return out
+         */
+        friend std::ostream &operator<<(std::ostream &out, Shadow &shadow);
     };
     /**
      * Divides the secret "secret" according to the Shamir scheme into "totalShadows" parts
@@ -25,7 +36,7 @@ namespace HW3 {
      * @param constantTerm - value in hex
      * @return result string in hex
      */
-    std::string valueOfPolynomial(size_t x, const std::vector<int> &parameters, const std::string &constantTerm);
+    std::string valueOfPolynomial(size_t x, const std::vector<short> &parameters, const std::string &constantTerm);
     /**
      * Restores the secret according to Shamir's scheme. Parameter
      * verification is not required - the user enters a valid value
@@ -40,8 +51,6 @@ namespace HW3 {
      * @return constant term, represented by BIGRATIO
      */
     BIGRATIO getConstantTermPart(const std::vector<Shadow> &shadows, size_t shadowNum);
-
-
 
 }  // namespace HW3
 
