@@ -32,11 +32,12 @@ namespace HW3 {
     /**
      * Finds the value of the polynomial at "x" using high precision calculations.
      * @param x - argument in dec
-     * @param parameters - vector of parameters (in dec) for a variable
+     * @param parameters - vector of parameters for a variable
      * @param constantTerm - value in hex
      * @return result string in hex
      */
-    std::string valueOfPolynomial(size_t x, const std::vector<short> &parameters, const std::string &constantTerm);
+    std::string valueOfPolynomial(size_t x, const std::vector<std::shared_ptr<BIGNUM>> &parameters,
+                                  const std::string &constantTerm);
     /**
      * Restores the secret according to Shamir's scheme. Parameter
      * verification is not required - the user enters a valid value

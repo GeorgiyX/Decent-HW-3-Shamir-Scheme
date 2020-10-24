@@ -7,16 +7,17 @@
 
 namespace HW3 {
     const char *MINUS_ONE = "-1";
+    const int PARAM_BIT_LEN = 256;
 
     std::vector<Shadow> splitSecret(const std::string &secret, size_t totalShadows, size_t minShadows) {
-        std::vector<short> parameters(minShadows - 1, 0);
+        std::vector<std::shared_ptr<BIGNUM>> parameters(minShadows - 1, bn::make_bignum());
         std::vector<Shadow> shadows;
         int rc = 0;
 
         /* generating parameters of a polynomial of degree "minShadows - 1" */
         for (auto &parameter : parameters) {
-            rc = RAND_bytes(reinterpret_cast<unsigned char *>(&parameter), sizeof(parameter));
-            if (rc != 1) { throw std::runtime_error("RAND_bytes error"); }
+            rc = BN_rand(parameter.get(), PARAM_BIT_LEN, 0, 0);
+            if (rc != 1) { throw std::runtime_error("BN_rand error"); }
         }
 
         /* calculating parts of a shared secret */
@@ -27,12 +28,12 @@ namespace HW3 {
         return shadows;
     }
 
-    std::string valueOfPolynomial(size_t x, const std::vector<short> &parameters, const std::string &constantTerm) {
+    std::string valueOfPolynomial(size_t x, const std::vector<std::shared_ptr<BIGNUM>> &parameters,
+                                  const std::string &constantTerm) {
         static auto ctx = bn::make_ctx();
         auto result     = bn::make_bignum();
         auto argument   = bn::make_bignum();
         auto pow        = bn::make_bignum();
-        auto param      = bn::make_bignum();
         auto powResult  = bn::make_bignum();
         auto mulResult  = bn::make_bignum();  // todo: re-use param
 
@@ -45,8 +46,7 @@ namespace HW3 {
             bn::dec2bn(pow, std::to_string(i + 1));
             bn::exp(powResult, argument, pow, ctx);
             /* mul: */
-            bn::dec2bn(param, std::to_string(parameters[i]));
-            bn::mul(mulResult, param, powResult, ctx);
+            bn::mul(mulResult, parameters[i], powResult, ctx);
             /* add: */
             bn::add(result, result, mulResult);
         }
