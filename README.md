@@ -1,4 +1,8 @@
-## Задание
+## Что это
+
+Домашнее задание № 3, по [курсу](https://park.mail.ru/curriculum/program/discipline/1023/) "Разработчик криптографических протоколов и децентрализованных систем", осень 2020 (Технопарк MailRu).
+
+### Задание
 
 Программа, разделяет секретную строку в hex формате длиной 256 bit (например, приватный ключ ECDSA secp256k1) на N частей по схеме Шамира и восстанавливает его при предъявлении любых T частей.
 
@@ -32,7 +36,7 @@
 #### Сборка:
 
 ```bash
-git clone -b hw3 --single-branch https://github.com/GeorgiyX/Decent-HW.git
+git clone https://github.com/GeorgiyX/Decent-HW-3-Shamir-Scheme.git
 cd Decent-HW
 mkdir build
 cd build
